@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: apdi
+      POSTGRES_USER: apdi
+      POSTGRES_PASSWORD: apdi_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - apdi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apdi -d apdi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://apdi:apdi_dev_password@db:5432/apdi
+      APP_ENV: development
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  apdi_pgdata:
