@@ -1,4 +1,5 @@
 """Two explicitly separated public feeds. Draft candidates never become verified records."""
+import os
 from datetime import timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -49,23 +50,44 @@ def unverified_item(row, snap):
     }
 
 
+def public_draft_previews_enabled() -> bool:
+    """Temporary compatibility switch; disabled by default for public deployments.
+
+    This is NOT a per-candidate moderation approval mechanism.
+    """
+    return os.getenv('APDI_PUBLIC_DRAFT_PREVIEWS', '').strip().lower() in ('1', 'true', 'yes')
+
+
 @router.get('/intelligence')
 def intelligence(limit: int = Query(30, ge=1, le=100), db: Session = Depends(get_db)):
     verified = db.scalars(
         select(Development).where(Development.is_demo.is_(False), Development.verification_status == 'verified')
         .order_by(Development.created_at.desc(), Development.id.desc()).limit(limit)
     ).all()
-    # Show only still-draft, unpublished candidates. These are public previews, not verified announcements.
-    candidates = db.scalars(
-        select(ReviewCandidate).where(ReviewCandidate.review_status == 'draft', ReviewCandidate.published_development_id.is_(None))
-        .order_by(ReviewCandidate.created_at.desc(), ReviewCandidate.id.desc()).limit(limit)
-    ).all()
-    snapshot_ids = {r.snapshot_id for r in candidates}
-    snapshots = {s.id: s for s in db.scalars(select(IngestionSnapshot).where(IngestionSnapshot.id.in_(snapshot_ids))).all()} if snapshot_ids else {}
+    # Security: draft extraction content is NOT public by default.
+    # Temporary opt-in is for controlled demos only, never production publication.
+    candidates = []
+    snapshots = {}
+    if public_draft_previews_enabled():
+        candidates = db.scalars(
+            select(ReviewCandidate).where(
+                ReviewCandidate.review_status == 'draft',
+                ReviewCandidate.published_development_id.is_(None),
+            ).order_by(
+                ReviewCandidate.created_at.desc(), ReviewCandidate.id.desc()
+            ).limit(limit)
+        ).all()
+        snapshot_ids = {r.snapshot_id for r in candidates}
+        snapshots = {
+            s.id: s for s in db.scalars(
+                select(IngestionSnapshot).where(IngestionSnapshot.id.in_(snapshot_ids))
+            ).all()
+        } if snapshot_ids else {}
     return {
         'verified': {'count': len(verified), 'items': [verified_item(r) for r in verified],
                      'notice': 'Published, non-demo records marked verified. Stage and impact claims still depend on their source evidence.'},
         'unverified': {'count': len(candidates), 'items': [unverified_item(r, snapshots[r.snapshot_id]) for r in candidates if r.snapshot_id in snapshots],
-                       'notice': 'Unreviewed AI-extracted draft claims, NOT confirmed announcements. Source collection time is not news publication time. Financial figures are withheld pending review.'},
+                       'notice': ('Demo-only unreviewed AI drafts. Not confirmed announcements; financial figures withheld.' if public_draft_previews_enabled() else 'Unreviewed AI draft candidates are withheld from the public feed until a moderation workflow is implemented.')},
         'limit_per_feed': limit,
+        'draft_visibility': 'demo_opt_in' if public_draft_previews_enabled() else 'withheld',
     }
