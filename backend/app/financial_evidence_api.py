@@ -10,12 +10,18 @@ from .db import get_db
 from .models import IngestionSnapshot, ReviewCandidate
 from .review_api import admin_auth
 from .financial_evidence import FinancialEvidence, FinancialEvidenceAudit, validate_proposal
+from .source_archive import ArchivedSourceDocument, verify_pdf
 
 router = APIRouter(prefix='/api/v1/admin', tags=['financial-evidence'], dependencies=[Depends(admin_auth)])
 
 class ProposalInput(BaseModel):
     snapshot_id: int = Field(gt=0)
     proposal: dict
+    archived_document_id: int = Field(gt=0)
+
+class BindArchiveInput(BaseModel):
+    archived_document_id: int = Field(gt=0)
+    confirm_original_pdf_checked: bool = False
 
 class DecisionInput(BaseModel):
     confirm_original_pdf_checked: bool = False
@@ -23,10 +29,23 @@ class DecisionInput(BaseModel):
 
 def output(row):
     return {'id': row.id, 'candidate_id': row.candidate_id, 'snapshot_id': row.snapshot_id,
+            'archived_document_id': row.archived_document_id,
+            'provenance_status': 'bound_unverified' if row.archived_document_id else 'legacy_unbound',
             'kind': row.kind, 'original_amount_lakh': str(row.original_amount_lakh),
             'converted_amount_crore': str(row.converted_amount_crore), 'review_status': row.review_status,
             'source_page': row.source_page, 'source_line': row.source_line,
             'source_amount_index': row.source_amount_index, 'proposal': json.loads(row.proposal_json)}
+
+def require_verified_archive(db: Session, archive_id: int | None, snapshot_id: int) -> ArchivedSourceDocument:
+    if archive_id is None:
+        raise HTTPException(409, 'Verified archived PDF binding required; legacy evidence must be bound explicitly')
+    archive = db.get(ArchivedSourceDocument, archive_id)
+    if archive is None or archive.snapshot_id != snapshot_id:
+        raise HTTPException(422, 'Archived PDF does not belong to evidence snapshot')
+    if not verify_pdf(archive.sha256, archive.byte_size):
+        raise HTTPException(409, 'Archived PDF missing or tampered; approval blocked')
+    return archive
+
 
 @router.post('/candidates/{candidate_id}/financial-evidence', status_code=201)
 def submit(candidate_id: int, payload: ProposalInput, db: Session = Depends(get_db), x_admin_token: str | None = Header(default=None)):
@@ -42,6 +61,7 @@ def submit(candidate_id: int, payload: ProposalInput, db: Session = Depends(get_
         original = validate_proposal(payload.proposal)
     except (ValueError, KeyError, TypeError) as e:
         raise HTTPException(422, str(e))
+    require_verified_archive(db, payload.archived_document_id, snap.id)
     p = payload.proposal
     if not snap.url.lower().endswith('.pdf') and '.pdf?' not in snap.url.lower():
         raise HTTPException(422, 'Snapshot must be from a PDF URL')
@@ -49,7 +69,7 @@ def submit(candidate_id: int, payload: ProposalInput, db: Session = Depends(get_
     # Manual original-PDF verification is required; these fields are not independently verified here.
     from .pdf_batch_v8_guard import reject_existing_active_evidence
     reject_existing_active_evidence(db, candidate_id, p['kind'])
-    row = FinancialEvidence(candidate_id=candidate_id, snapshot_id=snap.id, kind=p['kind'],
+    row = FinancialEvidence(candidate_id=candidate_id, snapshot_id=snap.id, archived_document_id=payload.archived_document_id, kind=p['kind'],
         original_amount_lakh=original, converted_amount_crore=original / 100,
         source_page=p['source_page'], source_line=p['source_line'], source_amount_index=p['source_amount_index'],
         source_amount_token=str(p['source_amount_token']), source_text=p['source_text'],
@@ -64,6 +84,24 @@ def submit(candidate_id: int, payload: ProposalInput, db: Session = Depends(get_
     db.add(FinancialEvidenceAudit(financial_evidence_id=row.id, action='proposed', actor='admin-token-authenticated'))
     db.commit()
     return output(row)
+
+@router.post('/financial-evidence/{evidence_id}/bind-archive')
+def bind_archive(evidence_id: int, payload: BindArchiveInput, db: Session = Depends(get_db)):
+    row = db.get(FinancialEvidence, evidence_id)
+    if row is None:
+        raise HTTPException(404, 'Financial evidence not found')
+    if row.review_status != 'proposed' or row.archived_document_id is not None:
+        raise HTTPException(409, 'Only unbound proposed evidence can be bound')
+    if not payload.confirm_original_pdf_checked:
+        raise HTTPException(422, 'Reviewer must re-check original PDF coordinates and measure')
+    require_verified_archive(db, payload.archived_document_id, row.snapshot_id)
+    row.archived_document_id = payload.archived_document_id
+    db.add(FinancialEvidenceAudit(financial_evidence_id=row.id, action='archive_bound',
+                                  actor='admin-token-authenticated',
+                                  reason=f'Archive ID {payload.archived_document_id}; manual PDF recheck confirmed'))
+    db.commit()
+    return output(row)
+
 
 @router.get('/candidates/{candidate_id}/financial-evidence')
 def list_evidence(candidate_id: int, db: Session = Depends(get_db)):
@@ -94,6 +132,8 @@ def decide(evidence_id: int, decision: str, payload: DecisionInput, db: Session 
         raise HTTPException(409, 'Only proposed financial evidence can be decided')
     if not payload.confirm_original_pdf_checked:
         raise HTTPException(422, 'Confirm original PDF row, column and measure before decision')
+    if decision == 'approve':
+        require_verified_archive(db, row.archived_document_id, row.snapshot_id)
     row.review_status = 'approved' if decision == 'approve' else 'rejected'
     row.reviewed_at = datetime.now(timezone.utc)
     db.add(FinancialEvidenceAudit(financial_evidence_id=row.id, action=row.review_status,

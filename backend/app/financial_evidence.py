@@ -13,6 +13,7 @@ class FinancialEvidence(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     candidate_id: Mapped[int] = mapped_column(ForeignKey('review_candidates.id'), nullable=False, index=True)
     snapshot_id: Mapped[int] = mapped_column(ForeignKey('ingestion_snapshots.id'), nullable=False)
+    archived_document_id: Mapped[int | None] = mapped_column(ForeignKey('archived_source_documents.id'), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(40), nullable=False)
     original_amount_lakh: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     converted_amount_crore: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
