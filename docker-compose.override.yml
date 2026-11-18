@@ -1,0 +1,6 @@
+services:
+  api:
+    environment:
+      APDI_ADMIN_TOKEN: ${APDI_ADMIN_TOKEN:?Set APDI_ADMIN_TOKEN in project root .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      APDI_EXTRACTION_MODEL: ${APDI_EXTRACTION_MODEL:-gpt-4.1-mini}

@@ -7,3 +7,31 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.pyc
+# Database backups
+*.dump
+*.sql
+
+# Generated archives and backups
+*.zip
+*.bak
+*.backup
+*.before3i
+*.pre-v*.bak
+
+# Generated extraction outputs
+mse-*-review.json
+guttapadu-*.json
+
+# Local PDF source files
+MSE-CDP-Projects-Status-1.pdf
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+
+# Environment secrets
+.env
+.env.*
+!.env.example
