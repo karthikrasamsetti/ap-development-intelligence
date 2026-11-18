@@ -1,83 +1,52 @@
-import { getDashboard, type Development } from "@/lib/api";
+"use client";
 
-const money = (n?: number | null) => n == null ? "Not reported" : `₹${n.toLocaleString("en-IN")} Cr`;
-const label = (s: string) => s.replaceAll("_", " ");
+import { useMemo, useState } from "react";
+import type { Development } from "@/lib/api";
+import { useEffect } from "react";
 
-function Metric({ title, value, note }: { title: string; value: string | number; note: string }) {
-  return <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-    <p className="text-sm text-slate-400">{title}</p><p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
-    <p className="mt-2 text-xs text-slate-500">{note}</p>
-  </div>;
+type Dashboard = { data_mode?: string; notice?: string; as_of?: string; metrics?: { tracked_records?: number; mou_signed?: number; grounded?: number; operational?: number; verified_jobs_created?: number }; recent_developments?: Development[] };
+type Tab = "overview" | "investments" | "infrastructure" | "schemes" | "districts" | "future";
+const DISTRICTS = ["Alluri Sitharama Raju","Anakapalli","Anantapur","Annamayya","Bapatla","Chittoor","Dr. B.R. Ambedkar Konaseema","East Godavari","Eluru","Guntur","Kakinada","Krishna","Kurnool","Markapuram","Nandyal","NTR","Palnadu","Parvathipuram Manyam","Polavaram","Prakasam","Sri Potti Sriramulu Nellore","Sri Sathya Sai","Srikakulam","Tirupati","Visakhapatnam","Vizianagaram","West Godavari","YSR Kadapa"];
+const tabs: { id: Tab; label: string; icon: string }[] = [{id:"overview",label:"Overview",icon:"◫"},{id:"investments",label:"Investments & MoUs",icon:"↗"},{id:"infrastructure",label:"Infrastructure",icon:"▤"},{id:"schemes",label:"Govt schemes",icon:"✧"},{id:"districts",label:"District explorer",icon:"◎"},{id:"future",label:"Future AP",icon:"◷"}];
+const readable = (s?: string) => (s || "Not specified").replaceAll("_", " ");
+const format = (n?: number | null) => n == null ? "Not reported" : n.toLocaleString("en-IN");
+const currency = (n?: number | null) => n == null ? "Not reported" : `₹${format(n)} Cr`;
+const validUrl = (s: unknown) => typeof s === "string" && /^https?:\/\//i.test(s) ? s : null;
+const icon = (category?: string) => category === "scheme" ? "✳" : category === "infrastructure" ? "▥" : "↗";
+const classification = (item: Development) => (item.category || "").toLowerCase();
+function DevelopmentCard({ item }: { item: Development }) {
+  const source = validUrl((item as Development & { source_url?: string }).source_url);
+  return <article className="development-card"><div className="card-head"><span className="category"><span className="category-symbol">{icon(item.category)}</span>{readable(item.category)}</span><span className="status">{readable(item.status)}</span></div><h3>{item.title}</h3><p className="card-summary">{item.summary}</p><div className="card-facts"><div><small>District</small><strong>{item.district || "Statewide / unspecified"}</strong></div><div><small>Investment</small><strong>{currency(item.investment_inr_crore)}</strong></div><div><small>Expected jobs</small><strong>{format(item.expected_jobs)}</strong></div><div><small>Jobs created</small><strong>{format(item.jobs_created)}</strong></div></div><div className="card-footer"><span>{item.is_demo ? "Illustrative sample · not verified" : "Published record · check source"}</span>{source && <a href={source} target="_blank" rel="noopener noreferrer">Source ↗</a>}</div></article>;
 }
-
-function RecordCard({ item }: { item: Development }) {
-  return <article className="rounded-2xl border border-white/10 bg-[#101c2d] p-5">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <span className="rounded-full bg-cyan-300/10 px-3 py-1 text-xs capitalize text-cyan-200">{item.category}</span>
-      <span className="rounded-full bg-white/5 px-3 py-1 text-xs capitalize text-slate-300">{label(item.status)}</span>
-    </div>
-    <h3 className="mt-4 text-lg font-semibold">{item.title}</h3>
-    <p className="mt-2 text-sm leading-6 text-slate-400">{item.summary}</p>
-    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-      <div><p className="text-xs text-slate-500">District</p><p className="mt-1">{item.district ?? "Statewide / not specified"}</p></div>
-      <div><p className="text-xs text-slate-500">Investment</p><p className="mt-1">{money(item.investment_inr_crore)}</p></div>
-      <div><p className="text-xs text-slate-500">Expected jobs</p><p className="mt-1">{item.expected_jobs?.toLocaleString("en-IN") ?? "Not reported"}</p></div>
-      <div><p className="text-xs text-slate-500">Jobs created</p><p className="mt-1">{item.jobs_created?.toLocaleString("en-IN") ?? "Not verified"}</p></div>
-    </div>
-    <p className="mt-4 border-t border-white/10 pt-3 text-[11px] uppercase tracking-wider text-amber-300">Illustrative demo record · Not a verified claim</p>
-  </article>;
-}
-
-export default async function Home() {
-  const data = await getDashboard();
-  const items = data.recent_developments as Development[];
-  const metrics = data.metrics;
-  return <main className="min-h-screen">
-    <header className="border-b border-white/10 bg-[#0b1728]/90">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <div><p className="text-xs font-semibold tracking-[.24em] text-cyan-300">PUBLIC DEVELOPMENT TRACKER</p><p className="mt-1 text-lg font-bold">AP Development Intelligence</p></div>
-        <nav className="hidden gap-6 text-sm text-slate-400 md:flex"><a href="#developments">Developments</a><a href="#districts">Districts</a><a href="#schemes">Schemes</a><a href="#about">About</a></nav>
-        <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs text-emerald-300">Public beta</span>
-      </div>
-    </header>
-
-    <section className="mx-auto max-w-7xl px-6 pb-10 pt-16">
-      <div className="max-w-3xl">
-        <p className="text-sm font-medium text-cyan-300">ANDHRA PRADESH · DEVELOPMENT, INVESTMENT & PUBLIC IMPACT</p>
-        <h1 className="mt-5 text-4xl font-bold leading-tight tracking-tight md:text-6xl">Understand what is changing across <span className="text-cyan-300">Andhra Pradesh.</span></h1>
-        <p className="mt-5 max-w-2xl text-base leading-7 text-slate-400">Explore investment announcements, project progress, government schemes and district-level developments — with sources and transparent status tracking.</p>
-        <div className="mt-7 flex flex-wrap gap-3"><a href="#developments" className="rounded-xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950">Explore developments</a><a href="#about" className="rounded-xl border border-white/15 px-5 py-3 text-sm text-slate-200">How data is verified</a></div>
-      </div>
-    </section>
-
-    <section className="mx-auto max-w-7xl px-6">
-      <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] p-4 text-sm text-amber-100"><strong>Data transparency:</strong> {data.notice} All sample figures below are illustrative and must not be treated as actual government statistics.</div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Metric title="Tracked records" value={metrics.tracked_records} note="Illustrative sample count" />
-        <Metric title="MoUs signed" value={metrics.mou_signed} note="Demo records only" />
-        <Metric title="Projects grounded" value={metrics.grounded} note="Demo records only" />
-        <Metric title="Operational" value={metrics.operational} note="Demo records only" />
-        <Metric title="Verified jobs created" value={metrics.verified_jobs_created} note="No verified jobs in demo" />
-      </div>
-    </section>
-
-    <section id="developments" className="mx-auto max-w-7xl px-6 py-14">
-      <div className="mb-6"><p className="text-sm text-cyan-300">WHAT'S BEING TRACKED</p><h2 className="mt-2 text-2xl font-bold">Development explorer</h2><p className="mt-2 text-sm text-slate-400">Each record should eventually include its source, publication date, district and verification history.</p></div>
-      <div className="grid gap-4 lg:grid-cols-3">{items.map(item => <RecordCard key={item.id} item={item} />)}</div>
-    </section>
-
-    <section id="districts" className="mx-auto max-w-7xl px-6 pb-12">
-      <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#10243a] to-[#0d1726] p-8">
-        <p className="text-sm text-cyan-300">DISTRICT INTELLIGENCE</p><h2 className="mt-2 text-2xl font-bold">Explore all 28 districts</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">The next milestone adds district boundaries, project pins, investment filters and district profiles. We will use official boundary data rather than guessed map coordinates.</p>
-        <div className="mt-6 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:grid-cols-6">{["Alluri Sitharama Raju","Anakapalli","Anantapur","Annamayya","Bapatla","Chittoor","Dr. B.R. Ambedkar Konaseema","East Godavari","Eluru","Guntur","Kakinada","Krishna","Kurnool","Markapuram","Nandyal","NTR","Palnadu","Parvathipuram Manyam","Polavaram","Prakasam","Sri Potti Sriramulu Nellore","Sri Sathya Sai","Srikakulam","Tirupati","Visakhapatnam","Vizianagaram","West Godavari","YSR Kadapa"].map(d => <span key={d} className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-slate-300">{d}</span>)}</div>
-      </div>
-    </section>
-
-    <section id="schemes" className="mx-auto max-w-7xl px-6 pb-14">
-      <div className="rounded-3xl border border-white/10 p-8"><p className="text-sm text-cyan-300">GOVERNMENT SCHEMES</p><h2 className="mt-2 text-2xl font-bold">Make public benefits easier to understand</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Upcoming: searchable scheme catalogue with eligibility, benefit amount, application link, department, district coverage and official source.</p></div>
-    </section>
-
-    <footer id="about" className="border-t border-white/10 px-6 py-8 text-center text-xs leading-6 text-slate-500">Independent public information project · Not an official Government of Andhra Pradesh website. Data must be checked against linked primary sources before publication.</footer>
-  </main>;
+export default function Home() {
+  const [data, setData] = useState<Dashboard | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [query, setQuery] = useState("");
+  const [district, setDistrict] = useState("All districts");
+  const [status, setStatus] = useState("All statuses");
+  const [showSamples, setShowSamples] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => { const controller = new AbortController(); fetch("/api/public-dashboard", { signal: controller.signal }).then(async r => { if (!r.ok) throw new Error("API error"); return r.json(); }).then(setData).catch(e => { if (e.name !== "AbortError") setLoadError(true); }); return () => controller.abort(); }, []);
+  const records = useMemo(() => (data?.recent_developments || []).filter(x => !x.is_demo || showSamples), [data,showSamples]);
+  const filtered = useMemo(() => records.filter(item => {
+    if (district !== "All districts" && item.district !== district) return false;
+    if (status !== "All statuses" && item.status !== status) return false;
+    if (tab === "investments" && !["investment","mou"].includes(classification(item))) return false;
+    if (tab === "infrastructure" && classification(item) !== "infrastructure") return false;
+    if (tab === "schemes" && classification(item) !== "scheme") return false;
+    if (tab === "future" && !["announced","mou_signed","proposed","planned"].includes(item.status)) return false;
+    const text = [item.title,item.summary,item.district,item.sector,item.category].join(" ").toLowerCase();
+    return text.includes(query.toLowerCase().trim());
+  }),[records,district,status,query,tab]);
+  const verifiedCount = data?.metrics?.tracked_records ?? 0;
+  const metrics = [{name:"Verified developments",value:verifiedCount,icon:"▣",detail:"Published & verified"},{name:"MoUs signed",value:data?.metrics?.mou_signed ?? 0,icon:"⌁",detail:"Verified records"},{name:"Projects grounded",value:data?.metrics?.grounded ?? 0,icon:"▤",detail:"Implementation started"},{name:"Operational",value:data?.metrics?.operational ?? 0,icon:"◉",detail:"Confirmed operational"},{name:"Jobs created",value:format(data?.metrics?.verified_jobs_created ?? 0),icon:"♙",detail:"Verified actual jobs"}];
+  const districtCounts = useMemo(() => DISTRICTS.map(name => ({name,count:records.filter(r => r.district === name && !r.is_demo).length})),[records]);
+  const selectedDistrictCount = district === "All districts" ? verifiedCount : districtCounts.find(d => d.name === district)?.count ?? 0;
+  return <div className="site-shell"><header className="topbar"><div className="topbar-inner"><a className="brand" href="/" aria-label="AP Development Intelligence home"><span className="brand-mark">AP<span className="brand-dot">.</span></span><span className="brand-copy"><strong>Development Intelligence</strong><small>ANDHRA PRADESH · PUBLIC DATA</small></span></a><nav className="topnav" aria-label="Primary"><a className="active" href="/">Explore</a><a href="/updates">Latest sources</a><a href="/intelligence">Latest intelligence</a><a href="/discovery">Discovery</a><a href="/monitor">Monitoring</a><a href="/review">Evidence review ↗</a></nav><button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen}>☰ Menu</button><span className="independent-pill"><span className="live-dot"/> Independent project</span></div>{menuOpen && <nav className="mobile-links"><a href="/">Explore</a><a href="/updates">Latest sources</a><a href="/intelligence">Latest intelligence</a><a href="/discovery">Discovery</a><a href="/monitor">Monitoring</a><a href="/review">Evidence review</a></nav>}</header>
+    <main><section className="hero"><div className="hero-glow"/><div className="hero-inner"><div className="hero-copy"><span className="eyebrow"><span className="eyebrow-dot"/> THE STATE OF PROGRESS · ANDHRA PRADESH</span><h1>Every development.<br/><span>One clear picture.</span></h1><p>Discover where Andhra Pradesh is growing — investments, MoUs, infrastructure, government initiatives and their real impact. Tracked with evidence, not just headlines.</p><div className="hero-actions"><button className="primary-button" onClick={() => document.getElementById("explorer")?.scrollIntoView({behavior:"smooth"})}>Explore developments <span>↗</span></button><button className="secondary-button" onClick={() => {setTab("districts");document.getElementById("explorer")?.scrollIntoView({behavior:"smooth"});}}>Explore districts <span>→</span></button></div><div className="hero-proof"><span>◈ Source-first reporting</span><span>◈ Status-aware tracking</span><span>◈ District-level view</span></div></div><div className="hero-visual" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="orbit orbit-three"/><div className="hero-center"><span className="hero-center-small">FOCUS</span><strong>AP</strong><span className="hero-center-small">DISTRICT INTELLIGENCE</span></div><div className="orbit-label label-a">INVESTMENTS <b>↗</b></div><div className="orbit-label label-b">INFRASTRUCTURE <b>▥</b></div><div className="orbit-label label-c">PUBLIC IMPACT <b>◎</b></div></div></div></section>
+    <section className="dashboard-area"><div className="content-wrap"><div className="section-top"><div><span className="section-kicker">INTELLIGENCE AT A GLANCE</span><h2>Andhra Pradesh, by the numbers</h2><p>Only published, verified records contribute to these totals.</p></div><span className="update-pill">{data?.as_of ? `API checked ${new Date(data.as_of).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}` : loadError ? "API unavailable" : "Connecting to data source…"}</span></div><div className="metrics-grid">{metrics.map(m => <div className="metric-card" key={m.name}><div className="metric-icon">{m.icon}</div><div className="metric-value">{data ? m.value : "—"}</div><div className="metric-name">{m.name}</div><div className="metric-detail">{m.detail}</div></div>)}</div><div className="data-banner"><span className="banner-icon">ⓘ</span><div><strong>{verifiedCount === 0 ? "No verified public developments yet" : "Public data verification"}</strong><p>{verifiedCount === 0 ? "The collection and review pipeline is running, but drafts and unverified announcements are deliberately excluded from public totals. Figures will appear here after evidence review and publication." : "Published records are shown separately from drafts. An MoU, a grounded project and an operational project are different milestones."} {loadError ? "The backend is currently unreachable." : ""}</p></div><a href="/review">Review workspace ↗</a></div>
+    <div className="section-top explorer-heading" id="explorer"><div><span className="section-kicker">EXPLORE THE STATE</span><h2>Development intelligence</h2><p>Browse sectors, locations, project milestones and public programmes.</p></div></div><div className="explorer"><div className="tab-strip" role="tablist" aria-label="Development categories">{tabs.map(t => <button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id ? "tab active" : "tab"} onClick={() => {setTab(t.id);setQuery("");}}><span>{t.icon}</span>{t.label}</button>)}</div><div className="explorer-content">{tab === "districts" ? <div className="district-layout"><div><div className="pane-heading"><h3>District intelligence</h3><p>Select a district to explore its published developments.</p></div><div className="district-grid">{DISTRICTS.map(name => <button key={name} className={district===name ? "district-tile selected" : "district-tile"} onClick={() => setDistrict(name)}><span>{name}</span><small>{districtCounts.find(d=>d.name===name)?.count || 0} verified</small></button>)}</div></div><aside className="district-aside"><span className="section-kicker">SELECTED REGION</span><h3>{district}</h3><strong>{selectedDistrictCount}</strong><p>verified developments</p><button className="outline-button" onClick={() => {setTab("overview");document.getElementById("records")?.scrollIntoView({behavior:"smooth"});}}>View records →</button><p className="aside-note">District counts reflect published verified records only. A geographic boundary map will be added when validated boundary data is available.</p></aside></div> : <><div className="filters"><label className="search-box"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects, companies, districts…" aria-label="Search developments"/></label><select aria-label="Filter district" value={district} onChange={e=>setDistrict(e.target.value)}><option>All districts</option>{DISTRICTS.map(d=><option key={d}>{d}</option>)}</select><select aria-label="Filter status" value={status} onChange={e=>setStatus(e.target.value)}><option>All statuses</option>{["announced","mou_signed","grounded","operational","approved","proposed"].map(s=><option value={s} key={s}>{readable(s)}</option>)}</select></div>{tab === "schemes" && <div className="context-strip"><span>✳</span><div><strong>Government schemes explorer</strong><p>Verified scheme eligibility, benefits and application links will appear once those records are collected and reviewed.</p></div></div>}{tab === "future" && <div className="context-strip"><span>◷</span><div><strong>Future AP tracker</strong><p>Planned and announced projects are not the same as funded, grounded or operational projects.</p></div></div>}<div className="results-header" id="records"><h3>{tab === "overview" ? "Latest published developments" : tabs.find(t=>t.id===tab)?.label}</h3><div className="results-actions"><span>{filtered.length} records</span><label><input type="checkbox" checked={showSamples} onChange={e=>setShowSamples(e.target.checked)}/> Show illustrative samples</label></div></div>{filtered.length ? <div className="development-grid">{filtered.map(item=><DevelopmentCard key={item.id} item={item}/>)}</div> : <div className="empty-state"><div className="empty-art">▤<span>✦</span></div><h3>{data ? "No published records match this view" : "Loading published developments"}</h3><p>{data ? "Try another district or filter. The platform only displays verified public developments by default; drafts stay in the evidence review queue." : "Connecting to the APDI backend…"}</p><div className="empty-actions"><button className="outline-button" onClick={() => {setQuery("");setDistrict("All districts");setStatus("All statuses");setTab("overview");}}>Clear filters</button><a href="/review">Open review workspace ↗</a></div></div>}</>}</div></div>
+    <div className="feature-grid"><section className="feature-card briefing-card"><span className="section-kicker">DAILY INTELLIGENCE</span><div className="feature-symbol">☀</div><h2>Your daily AP briefing</h2><p>One place for verified updates on new investments, government decisions, projects, MoUs and public impact. The daily research workflow is separate from publication.</p><span className="feature-foot">Daily research · Publication after verification</span></section><section className="feature-card ask-card"><span className="section-kicker">COMING NEXT · ASK AP</span><div className="feature-symbol">✳</div><h2>Ask questions. Get evidence.</h2><p>“What projects are underway in Kakinada?” “Which MoUs have been grounded?” Answers will cite the source and distinguish proposals from real progress.</p><span className="feature-foot">AI assistant planned · Not live yet</span></section><section className="feature-card methodology-card"><span className="section-kicker">BUILT FOR TRUST</span><div className="feature-symbol">◈</div><h2>From announcement to impact</h2><p>We distinguish announced, MoU signed, grounded and operational stages — and expected employment from jobs actually created.</p><span className="feature-foot">Evidence-first · Human-reviewed publication</span></section></div>
+    </div></section></main><footer className="public-footer"><div className="footer-inner"><div><strong>AP<span>.</span> Development Intelligence</strong><p>Making Andhra Pradesh's development easier to understand.</p></div><div className="footer-links"><a href="/">Public dashboard</a><a href="/updates">Latest sources</a><a href="/intelligence">Latest intelligence</a><a href="/discovery">Discovery</a><a href="/monitor">Monitoring</a><a href="/review">Review workspace</a></div></div><p className="disclaimer">Independent public information project. Not affiliated with the Government of Andhra Pradesh. Figures are not official statistics unless attributed to verified primary sources. District labels are a working list, not an official boundary map; validate administrative changes against government sources.</p></footer></div>;
 }
