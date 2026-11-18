@@ -100,3 +100,6 @@ app.include_router(pdf_review_v5_router)
 
 from .pdf_review_v6_api import router as pdf_review_v6_router
 app.include_router(pdf_review_v6_router)
+
+from .source_archive_api import router as source_archive_router
+app.include_router(source_archive_router)

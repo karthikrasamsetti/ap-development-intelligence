@@ -17,6 +17,8 @@ services:
 
   api:
     build: ./backend
+    volumes:
+      - apdi_source_archive:/app/source_archive
     environment:
       DATABASE_URL: postgresql://apdi:apdi_dev_password@db:5432/apdi
       APP_ENV: development
@@ -27,4 +29,5 @@ services:
         condition: service_healthy
 
 volumes:
+  apdi_source_archive:
   apdi_pgdata:
